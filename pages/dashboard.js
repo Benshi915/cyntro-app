@@ -3,7 +3,6 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 
 const chartData = {
   today: {
-    kpis: { sales: 21000, profit: 7800, units: 3800, expenses: 13200 },
     'Sales ($)': [{ date: 'Apr 7', value: 21000 }],
     'Profit ($)': [{ date: 'Apr 7', value: 7800 }],
     'Units': [{ date: 'Apr 7', value: 3800 }],
@@ -13,8 +12,17 @@ const chartData = {
     'CTR (%)': [{ date: 'Apr 7', value: 1.6 }],
     'ACOS (%)': [{ date: 'Apr 7', value: 24 }]
   },
+  yesterday: {
+    'Sales ($)': [{ date: 'Apr 6', value: 18000 }],
+    'Profit ($)': [{ date: 'Apr 6', value: 7000 }],
+    'Units': [{ date: 'Apr 6', value: 3600 }],
+    'Orders': [{ date: 'Apr 6', value: 3100 }],
+    'CVR (%)': [{ date: 'Apr 6', value: 2.9 }],
+    'CPC ($)': [{ date: 'Apr 6', value: 0.5 }],
+    'CTR (%)': [{ date: 'Apr 6', value: 1.4 }],
+    'ACOS (%)': [{ date: 'Apr 6', value: 22 }]
+  },
   last7: {
-    kpis: { sales: 310000, profit: 78000, units: 14000, expenses: 232000 },
     'Sales ($)': [
       { date: 'Apr 1', value: 12000 },
       { date: 'Apr 2', value: 14000 },
@@ -87,50 +95,66 @@ const chartData = {
       { date: 'Apr 6', value: 24 },
       { date: 'Apr 7', value: 25 }
     ]
+  },
+  thisMonth: {
+    'Sales ($)': Array.from({ length: 10 }, (_, i) => ({ date: `Apr ${i + 1}`, value: 10000 + i * 1200 })),
+    'Profit ($)': Array.from({ length: 10 }, (_, i) => ({ date: `Apr ${i + 1}`, value: 4000 + i * 700 })),
+    'Units': Array.from({ length: 10 }, (_, i) => ({ date: `Apr ${i + 1}`, value: 2500 + i * 150 })),
+    'Orders': Array.from({ length: 10 }, (_, i) => ({ date: `Apr ${i + 1}`, value: 2200 + i * 140 })),
+    'CVR (%)': Array.from({ length: 10 }, (_, i) => ({ date: `Apr ${i + 1}`, value: 2.5 + i * 0.1 })),
+    'CPC ($)': Array.from({ length: 10 }, (_, i) => ({ date: `Apr ${i + 1}`, value: 0.4 + i * 0.01 })),
+    'CTR (%)': Array.from({ length: 10 }, (_, i) => ({ date: `Apr ${i + 1}`, value: 1 + i * 0.1 })),
+    'ACOS (%)': Array.from({ length: 10 }, (_, i) => ({ date: `Apr ${i + 1}`, value: 20 + i }))
+  },
+  lastMonth: {
+    'Sales ($)': Array.from({ length: 10 }, (_, i) => ({ date: `Mar ${i + 1}`, value: 9000 + i * 1100 })),
+    'Profit ($)': Array.from({ length: 10 }, (_, i) => ({ date: `Mar ${i + 1}`, value: 3800 + i * 600 })),
+    'Units': Array.from({ length: 10 }, (_, i) => ({ date: `Mar ${i + 1}`, value: 2300 + i * 140 })),
+    'Orders': Array.from({ length: 10 }, (_, i) => ({ date: `Mar ${i + 1}`, value: 2000 + i * 130 })),
+    'CVR (%)': Array.from({ length: 10 }, (_, i) => ({ date: `Mar ${i + 1}`, value: 2.3 + i * 0.08 })),
+    'CPC ($)': Array.from({ length: 10 }, (_, i) => ({ date: `Mar ${i + 1}`, value: 0.38 + i * 0.01 })),
+    'CTR (%)': Array.from({ length: 10 }, (_, i) => ({ date: `Mar ${i + 1}`, value: 0.9 + i * 0.1 })),
+    'ACOS (%)': Array.from({ length: 10 }, (_, i) => ({ date: `Mar ${i + 1}`, value: 18 + i }))
   }
 };
 
 export default function Dashboard() {
   const [selectedRange, setSelectedRange] = useState('last7');
-  const [selectedMetric, setSelectedMetric] = useState('CTR (%)');
+  const [selectedMetric, setSelectedMetric] = useState('Sales ($)');
 
   const data = chartData[selectedRange]?.[selectedMetric] || [];
-  const kpis = chartData[selectedRange]?.kpis || {};
 
   return (
     <div style={{ padding: '2rem' }}>
       <h1>Dashboard</h1>
 
-      {/* KPI Cards */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
         <div style={{ flex: 1, padding: '1rem', border: '1px solid #ccc' }}>
           <h4>Sales</h4>
-          <p>{kpis.sales?.toLocaleString() || '-'}</p>
+          <p>310,000</p>
         </div>
         <div style={{ flex: 1, padding: '1rem', border: '1px solid #ccc' }}>
           <h4>Units</h4>
-          <p>{kpis.units?.toLocaleString() || '-'}</p>
+          <p>14,000</p>
         </div>
         <div style={{ flex: 1, padding: '1rem', border: '1px solid #ccc' }}>
           <h4>Profit</h4>
-          <p>{kpis.profit?.toLocaleString() || '-'}</p>
+          <p>78,000</p>
         </div>
         <div style={{ flex: 1, padding: '1rem', border: '1px solid #ccc' }}>
           <h4>Expenses</h4>
-          <p>{kpis.expenses?.toLocaleString() || '-'}</p>
+          <p>232,000</p>
         </div>
       </div>
 
-      {/* Date Range Selector */}
       <div style={{ marginBottom: '1rem' }}>
         {['today', 'yesterday', 'last7', 'thisMonth', 'lastMonth', 'custom'].map(range => (
           <button key={range} onClick={() => setSelectedRange(range)} style={{ marginRight: '0.5rem' }}>
-            {range === 'last7' ? 'Last 7 Days' : range.charAt(0).toUpperCase() + range.slice(1)}
+            {range === 'last7' ? 'Last 7 Days' : range === 'thisMonth' ? 'This Month' : range === 'lastMonth' ? 'Last Month' : range.charAt(0).toUpperCase() + range.slice(1)}
           </button>
         ))}
       </div>
 
-      {/* Y-Axis Selector */}
       <div style={{ marginBottom: '1rem' }}>
         <label>Y-Axis: </label>
         <select value={selectedMetric} onChange={e => setSelectedMetric(e.target.value)}>
@@ -140,7 +164,6 @@ export default function Dashboard() {
         </select>
       </div>
 
-      {/* Chart */}
       <h4>Sales Over Time</h4>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={data}>
@@ -151,7 +174,6 @@ export default function Dashboard() {
         </LineChart>
       </ResponsiveContainer>
 
-      {/* Product Cards */}
       <h4 style={{ marginTop: '2rem' }}>Products</h4>
       <div style={{ border: '1px solid #ccc', padding: '1rem', marginTop: '1rem' }}>
         <b>Nike Sneakers</b>
