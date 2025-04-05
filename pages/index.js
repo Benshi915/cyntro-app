@@ -1,29 +1,30 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
 import { useRouter } from 'next/router';
+import { supabase } from '../utils/supabaseClient';
 
 export default function Home() {
-  const [session, setSession] = useState(null);
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) router.push('/profile');
-    });
+    const checkSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) router.push('/profile');
-    });
+      if (session) {
+        router.push('/dashboard'); // כבר מחובר
+      } else {
+        router.push('/login'); // לא מחובר
+      }
+    };
 
-    return () => subscription.unsubscribe();
-  }, []);
+    checkSession();
+  }, [router]);
 
   return (
     <div style={{ padding: 32 }}>
-      <h1>Welcome to Cyntro</h1>
-      <a href="/login">Login</a> | <a href="/register">Register</a>
+      <h2>טוען את האפליקציה...</h2>
     </div>
   );
 }
