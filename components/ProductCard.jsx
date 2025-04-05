@@ -1,20 +1,12 @@
-export default function ProductCard({ name, revenue, profit, units, orders, acos }) {
+import React from 'react';
+
+export default function ProductCard({ product }) {
   return (
-    <div style={{
-      border: '1px solid #ddd',
-      padding: '1rem',
-      borderRadius: '8px',
-      backgroundColor: '#fff',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-    }}>
-      <h3 style={{ marginBottom: '0.5rem' }}>{name}</h3>
-      <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-        <div><strong>Revenue:</strong> {revenue}</div>
-        <div><strong>Profit:</strong> {profit}</div>
-        <div><strong>Units:</strong> {units}</div>
-        <div><strong>Orders:</strong> {orders}</div>
-        <div><strong>ACOS:</strong> {acos}</div>
-      </div>
+    <div style={{ border: '1px solid #eee', padding: '15px', marginBottom: '10px' }}>
+      <h3>{product.name}</h3>
+      <p>Sales: ${product.sales}</p>
+      <p>Profit: ${product.profit}</p>
+      <p>Units: {product.units}</p>
     </div>
   );
 }

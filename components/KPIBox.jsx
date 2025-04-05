@@ -1,15 +1,11 @@
-export default function KPIBox({ title, value }) {
+import React from 'react';
+
+export default function KPIBox({ title, value, subtitle }) {
   return (
-    <div style={{
-      flex: '1 1 200px',
-      backgroundColor: '#fff',
-      border: '1px solid #ddd',
-      padding: '1rem',
-      borderRadius: '8px',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-    }}>
-      <h4 style={{ marginBottom: '0.5rem', color: '#555' }}>{title}</h4>
-      <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{value}</div>
+    <div style={{ border: '1px solid #ddd', borderRadius: '10px', padding: '20px', flex: 1 }}>
+      <h3>{title}</h3>
+      <h1>{value}</h1>
+      <p>{subtitle}</p>
     </div>
   );
 }
