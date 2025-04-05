@@ -1,18 +1,14 @@
-import React from 'react';
-
-const ProductCard = ({ product }) => {
-  if (!product || !product.name) {
-    return null; // מונע קריסה בבילד
-  }
-
+export default function ProductCard({ product }) {
   return (
-    <div style={{ border: '1px solid #eee', padding: '16px', marginBottom: '16px' }}>
-      <h3>{product.name}</h3>
-      <p>Sales: ${product.sales.toLocaleString()}</p>
-      <p>Profit: ${product.profit.toLocaleString()}</p>
-      <p>Units: {product.units.toLocaleString()}</p>
+    <div style={{ border: '1px solid #ddd', borderRadius: '8px', padding: '20px', marginBottom: '10px' }}>
+      <h4>{product.name}</h4>
+      <p>Sales: ${product.sales}</p>
+      <p>Profit: ${product.profit}</p>
+      <p>Units: {product.units}</p>
+      <p>ACOS: {product.acos}%</p>
+      <p>CTR: {product.ctr}%</p>
+      <p>CPC: ${product.cpc}</p>
+      <p>CVR: {product.cvr}%</p>
     </div>
   );
-};
-
-export default ProductCard;
+}
