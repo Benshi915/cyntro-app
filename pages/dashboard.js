@@ -1,111 +1,93 @@
-
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Sidebar from '../components/Sidebar';
 import KPIBox from '../components/KPIBox';
 import DashboardChart from '../components/DashboardChart';
+import ProductCard from '../components/ProductCard';
 
-const DashboardPage = () => {
-  const dataByRange = {
-    today: {
-      kpis: { sales: 12000, units: 490, profit: 2000, expenses: 10000 },
-      chart: [
-        { date: 'Apr 7', sales: 12000 }
-      ]
-    },
-    yesterday: {
-      kpis: { sales: 14000, units: 510, profit: 2200, expenses: 11800 },
-      chart: [
-        { date: 'Apr 6', sales: 14000 }
-      ]
-    },
-    last7days: {
-      kpis: { sales: 350897, units: 14794, profit: 80706, expenses: 270191 },
-      chart: [
-        { date: 'Apr 1', sales: 12000 },
-        { date: 'Apr 2', sales: 14500 },
-        { date: 'Apr 3', sales: 13400 },
-        { date: 'Apr 4', sales: 18900 },
-        { date: 'Apr 5', sales: 16200 },
-        { date: 'Apr 6', sales: 20300 },
-        { date: 'Apr 7', sales: 21900 }
-      ]
-    },
-    thisMonth: {
-      kpis: { sales: 400000, units: 15000, profit: 90000, expenses: 310000 },
-      chart: [
-        { date: 'Apr 1', sales: 10000 },
-        { date: 'Apr 5', sales: 13000 },
-        { date: 'Apr 10', sales: 15000 },
-        { date: 'Apr 15', sales: 16000 },
-        { date: 'Apr 20', sales: 18000 },
-        { date: 'Apr 25', sales: 21000 },
-        { date: 'Apr 30', sales: 23000 }
-      ]
-    },
-    lastMonth: {
-      kpis: { sales: 310000, units: 14000, profit: 78000, expenses: 232000 },
-      chart: [
-        { date: 'Mar 1', sales: 8000 },
-        { date: 'Mar 7', sales: 11000 },
-        { date: 'Mar 14', sales: 12500 },
-        { date: 'Mar 21', sales: 14300 },
-        { date: 'Mar 28', sales: 15900 }
-      ]
-    },
-    custom: {
-      kpis: { sales: 0, units: 0, profit: 0, expenses: 0 },
-      chart: []
-    }
+const dummyData = {
+  today: [...Array(7)].map((_, i) => ({
+    date: `Apr ${i + 1}`,
+    sales: 12000 + i * 1000,
+    profit: 8000 + i * 800,
+    units: 2000 + i * 100,
+    orders: 1500 + i * 90,
+    cvr: 3 + i * 0.2,
+    cpc: 0.45 + i * 0.01,
+    ctr: 1.2 + i * 0.1,
+    acos: 25 - i * 0.5
+  })),
+  // Add dummy datasets for other periods here if needed
+};
+
+const kpis = {
+  sales: 310000,
+  units: 14000,
+  profit: 78000,
+  expenses: 232000,
+};
+
+const productExample = {
+  name: 'Nike Sneakers',
+  sales: 78603,
+  profit: 18503,
+  units: 4623,
+  acos: 23.4,
+  ctr: 1.23,
+  cpc: 0.52,
+  cvr: 3.7
+};
+
+export default function Dashboard() {
+  const [selectedRange, setSelectedRange] = useState('today');
+  const [yMetric, setYMetric] = useState('sales');
+  const chartData = dummyData[selectedRange];
+
+  const metricLabels = {
+    sales: 'Sales ($)',
+    profit: 'Profit ($)',
+    units: 'Units Sold',
+    orders: 'Orders',
+    cvr: 'CVR (%)',
+    cpc: 'CPC ($)',
+    ctr: 'CTR (%)',
+    acos: 'ACOS (%)'
   };
-
-  const [selectedRange, setSelectedRange] = useState('last7days');
-  const currentData = dataByRange[selectedRange];
 
   return (
     <div style={{ display: 'flex' }}>
       <Sidebar />
-      <div style={{ padding: '32px', flex: 1 }}>
+      <div style={{ padding: '20px', flex: 1 }}>
         <h1>Dashboard</h1>
-
-        <div style={{ display: 'flex', gap: '16px' }}>
-          <KPIBox title="Sales" value={currentData.kpis.sales} />
-          <KPIBox title="Units" value={currentData.kpis.units} />
-          <KPIBox title="Profit" value={currentData.kpis.profit} />
-          <KPIBox title="Expenses" value={currentData.kpis.expenses} />
+        <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+          <KPIBox title="Sales" value={kpis.sales.toLocaleString()} />
+          <KPIBox title="Units" value={kpis.units.toLocaleString()} />
+          <KPIBox title="Profit" value={kpis.profit.toLocaleString()} />
+          <KPIBox title="Expenses" value={kpis.expenses.toLocaleString()} />
         </div>
 
-        <div style={{ marginTop: '20px' }}>
-          {['today', 'yesterday', 'last7days', 'thisMonth', 'lastMonth', 'custom'].map(range => (
-            <button
-              key={range}
-              style={{
-                marginRight: '8px',
-                padding: '6px 10px',
-                backgroundColor: selectedRange === range ? '#eee' : 'white',
-                border: '1px solid #ccc',
-                cursor: 'pointer'
-              }}
-              onClick={() => setSelectedRange(range)}
-            >
-              {{
-                today: 'Today',
-                yesterday: 'Yesterday',
-                last7days: 'Last 7 Days',
-                thisMonth: 'This Month',
-                lastMonth: 'Last Month',
-                custom: 'Custom Range'
-              }[range]}
+        <div style={{ marginBottom: '10px' }}>
+          {['today', 'yesterday', 'last7', 'thisMonth', 'lastMonth', 'custom'].map(label => (
+            <button key={label} onClick={() => setSelectedRange('today')} style={{ marginRight: '10px' }}>
+              {label.charAt(0).toUpperCase() + label.slice(1).replace(/([A-Z])/g, ' $1')}
             </button>
           ))}
         </div>
 
-        <h3 style={{ marginTop: '30px' }}>Sales Over Time</h3>
-        <DashboardChart data={currentData.chart} />
+        <div style={{ marginBottom: '10px' }}>
+          <label>Y-Axis: </label>
+          <select value={yMetric} onChange={(e) => setYMetric(e.target.value)}>
+            {Object.keys(metricLabels).map(metric => (
+              <option key={metric} value={metric}>{metricLabels[metric]}</option>
+            ))}
+          </select>
+        </div>
 
-        <h2 style={{ marginTop: '30px' }}>Products</h2>
+        <h3>Sales Over Time</h3>
+        <DashboardChart data={chartData} yKey={yMetric} />
+
+        <h2>Products</h2>
+        <ProductCard product={productExample} />
       </div>
     </div>
   );
-};
-
-export default DashboardPage;
+}
