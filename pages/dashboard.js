@@ -121,50 +121,41 @@ const chartData = {
 export default function Dashboard() {
   const [selectedRange, setSelectedRange] = useState('last7');
   const [selectedMetric, setSelectedMetric] = useState('Sales ($)');
-
   const data = chartData[selectedRange]?.[selectedMetric] || [];
+
+  const dateOptions = {
+    today: 'Today',
+    yesterday: 'Yesterday',
+    last7: 'Last 7 Days',
+    thisMonth: 'This Month',
+    lastMonth: 'Last Month',
+    custom: 'Custom'
+  };
 
   return (
     <div style={{ padding: '2rem' }}>
       <h1>Dashboard</h1>
 
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-        <div style={{ flex: 1, padding: '1rem', border: '1px solid #ccc' }}>
-          <h4>Sales</h4>
-          <p>310,000</p>
+        <div>
+          <label>Date Range: </label>
+          <select value={selectedRange} onChange={e => setSelectedRange(e.target.value)}>
+            {Object.keys(dateOptions).map(key => (
+              <option key={key} value={key}>{dateOptions[key]}</option>
+            ))}
+          </select>
         </div>
-        <div style={{ flex: 1, padding: '1rem', border: '1px solid #ccc' }}>
-          <h4>Units</h4>
-          <p>14,000</p>
-        </div>
-        <div style={{ flex: 1, padding: '1rem', border: '1px solid #ccc' }}>
-          <h4>Profit</h4>
-          <p>78,000</p>
-        </div>
-        <div style={{ flex: 1, padding: '1rem', border: '1px solid #ccc' }}>
-          <h4>Expenses</h4>
-          <p>232,000</p>
+
+        <div>
+          <label>Y-Axis: </label>
+          <select value={selectedMetric} onChange={e => setSelectedMetric(e.target.value)}>
+            {['Sales ($)', 'Profit ($)', 'Units', 'Orders', 'CVR (%)', 'CPC ($)', 'CTR (%)', 'ACOS (%)'].map(metric => (
+              <option key={metric} value={metric}>{metric}</option>
+            ))}
+          </select>
         </div>
       </div>
 
-      <div style={{ marginBottom: '1rem' }}>
-        {['today', 'yesterday', 'last7', 'thisMonth', 'lastMonth', 'custom'].map(range => (
-          <button key={range} onClick={() => setSelectedRange(range)} style={{ marginRight: '0.5rem' }}>
-            {range === 'last7' ? 'Last 7 Days' : range === 'thisMonth' ? 'This Month' : range === 'lastMonth' ? 'Last Month' : range.charAt(0).toUpperCase() + range.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ marginBottom: '1rem' }}>
-        <label>Y-Axis: </label>
-        <select value={selectedMetric} onChange={e => setSelectedMetric(e.target.value)}>
-          {['Sales ($)', 'Profit ($)', 'Units', 'Orders', 'CVR (%)', 'CPC ($)', 'CTR (%)', 'ACOS (%)'].map(metric => (
-            <option key={metric} value={metric}>{metric}</option>
-          ))}
-        </select>
-      </div>
-
-      <h4>Sales Over Time</h4>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={data}>
           <XAxis dataKey="date" />
