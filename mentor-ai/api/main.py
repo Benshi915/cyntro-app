@@ -10,6 +10,8 @@ Endpoints
   GET  /sources                 List all ingested sources
   GET  /stats                   Collection statistics
   GET  /health                  Health check
+  POST /prompt                  Build a Claude.ai-ready prompt for a query
+  GET  /route                   Show which persona a query routes to (debug)
 
 Start
 -----
@@ -31,6 +33,7 @@ load_dotenv()  # load .env at startup
 
 from ingestion import youtube_scraper, web_scraper, upload_handler
 from database import qdrant_client as db
+from personas.prompt_builder import build_prompt_for_query, get_routing_info
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -209,6 +212,64 @@ def get_stats():
     """Return collection statistics (total chunks, status)."""
     try:
         return db.collection_stats()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Endpoints: prompt builder ─────────────────────────────────────────────────
+
+class PromptRequest(BaseModel):
+    query: str
+    persona: Optional[str] = None   # "robbins" | "hormozi" | "both" | None (auto)
+    num_chunks: int = 5
+
+
+class PromptResponse(BaseModel):
+    mode: str            # which persona was selected
+    prompt: str          # full formatted prompt — paste this into Claude.ai
+    chunks_used: int     # how many knowledge base chunks were retrieved
+
+
+@app.post("/prompt", response_model=PromptResponse, tags=["Prompt"])
+def build_prompt(req: PromptRequest):
+    """
+    The core endpoint.
+
+    Send your question → get back a fully formatted prompt with:
+    - The correct persona system prompt (Robbins / Hormozi / both)
+    - The most relevant knowledge base excerpts
+    - Your question embedded at the end
+
+    Paste the returned `prompt` field directly into Claude.ai.
+    """
+    try:
+        routing = get_routing_info(req.query)
+        mode = req.persona or routing["mode"]
+
+        prompt = build_prompt_for_query(
+            query=req.query,
+            persona_override=req.persona,
+            num_chunks=req.num_chunks,
+        )
+
+        # Count context chunks (rough: count SOURCE markers)
+        chunks_used = prompt.count("[SOURCE:") or prompt.count("relevance:")
+
+        return PromptResponse(mode=mode, prompt=prompt, chunks_used=chunks_used)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/route", tags=["Prompt"])
+def route_query(q: str = Query(..., description="The query to analyse")):
+    """
+    Debug endpoint — shows how the router would classify a query
+    without building the full prompt.
+
+    Returns: mode, emotional_score, business_score, tags, reasoning.
+    """
+    try:
+        return get_routing_info(q)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

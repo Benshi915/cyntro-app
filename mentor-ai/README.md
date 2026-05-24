@@ -180,8 +180,8 @@ mentor-ai/
 
 ## What's next
 
-- [ ] `personas/robbins.py` — Tony Robbins system prompt
-- [ ] `personas/hormozi.py` — Alex Hormozi system prompt
-- [ ] `personas/router.py` — Detects query type, selects persona
-- [ ] `personas/prompt_builder.py` — Assembles final prompt for Claude.ai
+- [x] `personas/robbins.py` — Tony Robbins system prompt + frameworks ✅
+- [x] `personas/hormozi.py` — Alex Hormozi system prompt + frameworks ✅
+- [x] `personas/router.py` — Detects query type, selects persona ✅
+- [x] `personas/prompt_builder.py` — Assembles final prompt for Claude.ai ✅
 - [ ] Next.js frontend — chat UI + upload panel
