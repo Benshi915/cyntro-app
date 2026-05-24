@@ -178,10 +178,29 @@ mentor-ai/
 
 ---
 
+## Start the frontend
+
+```bash
+cd mentor-ai/frontend
+cp .env.local.example .env.local
+npm install
+npm run dev
+```
+
+Open: http://localhost:3000
+
+### Pages
+
+| Page | Path | What it does |
+|------|------|-------------|
+| Ask  | `/`        | Type a question → get a Claude.ai-ready prompt |
+| Add  | `/upload`  | Add YouTube / web / file content to the knowledge base |
+| Sources | `/sources` | Browse all ingested sources, search chunks, filter by tag |
+
 ## What's next
 
 - [x] `personas/robbins.py` — Tony Robbins system prompt + frameworks ✅
 - [x] `personas/hormozi.py` — Alex Hormozi system prompt + frameworks ✅
 - [x] `personas/router.py` — Detects query type, selects persona ✅
-- [x] `personas/prompt_builder.py` — Assembles final prompt for Claude.ai ✅
-- [ ] Next.js frontend — chat UI + upload panel
+- [x] `personas/prompt_builder.py` — RAG assembler → Claude.ai prompt ✅
+- [x] Next.js frontend — Ask / Upload / Sources ✅
