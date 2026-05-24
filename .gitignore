@@ -1,0 +1,3 @@
+mentor-ai/**/__pycache__/
+mentor-ai/**/*.pyc
+mentor-ai/.env
