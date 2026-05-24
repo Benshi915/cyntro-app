@@ -1,0 +1,220 @@
+"""
+FastAPI server — the single backend entry point.
+
+Endpoints
+---------
+  POST /ingest/youtube          Ingest a YouTube video by URL
+  POST /ingest/url              Scrape and ingest a web article
+  POST /ingest/upload           Upload a file (PDF, audio, video, text)
+  GET  /search                  Semantic search the knowledge base
+  GET  /sources                 List all ingested sources
+  GET  /stats                   Collection statistics
+  GET  /health                  Health check
+
+Start
+-----
+    cd mentor-ai
+    uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+"""
+
+from __future__ import annotations
+
+import os
+from typing import List, Optional
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, HttpUrl
+
+load_dotenv()  # load .env at startup
+
+from ingestion import youtube_scraper, web_scraper, upload_handler
+from database import qdrant_client as db
+
+# ── App setup ─────────────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title="Mentor AI — Backend API",
+    description="Data ingestion and knowledge retrieval for the Tony Robbins × Alex Hormozi AI mentor.",
+    version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Next.js dev
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── Startup: ensure Qdrant collection exists ──────────────────────────────────
+
+@app.on_event("startup")
+def startup() -> None:
+    try:
+        db.init_collection()
+    except Exception as e:
+        print(f"[startup] ⚠️  Could not connect to Qdrant: {e}")
+        print("[startup] Is Docker running? → docker compose -f docker/docker-compose.yml up -d")
+
+
+# ── Request / response models ─────────────────────────────────────────────────
+
+class YoutubeIngestRequest(BaseModel):
+    url: str
+    whisper_model: str = "base"
+    keep_audio: bool = False
+
+
+class UrlIngestRequest(BaseModel):
+    url: str
+
+
+class SearchRequest(BaseModel):
+    query: str
+    limit: int = 5
+    persona: Optional[str] = None   # "robbins" | "hormozi" | "both" | None
+    tag: Optional[str] = None
+    score_threshold: float = 0.0
+
+
+class IngestResponse(BaseModel):
+    status: str
+    chunks_stored: int
+    chunk_ids: List[str]
+
+
+class SearchResult(BaseModel):
+    id: str
+    score: float
+    content: str
+    source_url: str
+    source_type: str
+    title: Optional[str]
+    persona: str
+    tags: List[str]
+    chunk_index: int
+    total_chunks: int
+    timestamp: str
+
+
+# ── Background task wrapper ───────────────────────────────────────────────────
+# For heavy operations (Whisper, scraping) we accept the request immediately
+# and run ingestion in the background. For simplicity here we run synchronously
+# and return results — background mode can be toggled with ?async=true later.
+
+
+# ── Endpoints: ingestion ──────────────────────────────────────────────────────
+
+@app.post("/ingest/youtube", response_model=IngestResponse, tags=["Ingestion"])
+def ingest_youtube(req: YoutubeIngestRequest):
+    """
+    Download, transcribe, and store a YouTube video.
+
+    This is a long-running operation (2–15 min depending on video length and
+    Whisper model). Keep the connection open or run with a client that handles
+    long timeouts.
+    """
+    try:
+        ids = youtube_scraper.ingest_youtube(
+            url=req.url,
+            whisper_model=req.whisper_model,
+            keep_audio=req.keep_audio,
+        )
+        return IngestResponse(status="ok", chunks_stored=len(ids), chunk_ids=ids)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ingest/url", response_model=IngestResponse, tags=["Ingestion"])
+def ingest_url(req: UrlIngestRequest):
+    """Scrape a web article or blog post and store it."""
+    try:
+        ids = web_scraper.ingest_url(req.url)
+        return IngestResponse(status="ok", chunks_stored=len(ids), chunk_ids=ids)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ingest/upload", response_model=IngestResponse, tags=["Ingestion"])
+async def ingest_file_upload(
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    whisper_model: str = Form("base"),
+):
+    """
+    Upload a file (PDF, MP3, MP4, TXT, MD) and ingest it.
+
+    Multipart form fields:
+    - file         : The file binary
+    - title        : Optional display title
+    - whisper_model: Whisper model size for audio/video (default: base)
+    """
+    try:
+        content = await file.read()
+        ids = upload_handler.ingest_upload_bytes(
+            content=content,
+            filename=file.filename or "upload",
+            title=title,
+            whisper_model=whisper_model,
+        )
+        return IngestResponse(status="ok", chunks_stored=len(ids), chunk_ids=ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Endpoints: retrieval ──────────────────────────────────────────────────────
+
+@app.get("/search", response_model=List[SearchResult], tags=["Retrieval"])
+def search(
+    q: str = Query(..., description="Search query"),
+    limit: int = Query(5, ge=1, le=20),
+    persona: Optional[str] = Query(None, description="robbins | hormozi | both"),
+    tag: Optional[str] = Query(None, description="Filter by topic tag"),
+    score_threshold: float = Query(0.0, ge=0.0, le=1.0),
+):
+    """
+    Semantic search over the knowledge base.
+
+    Returns the most relevant chunks for the query.
+    Use persona= and tag= to narrow results.
+    """
+    try:
+        results = db.search(
+            query=q,
+            limit=limit,
+            persona_filter=persona,
+            tag_filter=tag,
+            score_threshold=score_threshold,
+        )
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/sources", tags=["Retrieval"])
+def list_sources():
+    """Return a deduplicated list of all ingested sources."""
+    try:
+        return db.list_sources()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats", tags=["Retrieval"])
+def get_stats():
+    """Return collection statistics (total chunks, status)."""
+    try:
+        return db.collection_stats()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Health check ──────────────────────────────────────────────────────────────
+
+@app.get("/health", tags=["System"])
+def health():
+    return {"status": "ok"}
