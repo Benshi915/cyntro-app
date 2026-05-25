@@ -30,8 +30,8 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 from .auto_tagger import tag_chunks_batch
 from .youtube_scraper import chunk_text
-from ..database.schema import KnowledgeChunk
-from ..database import qdrant_client as db
+from database.schema import KnowledgeChunk
+from database import qdrant_client as db
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 

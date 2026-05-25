@@ -30,7 +30,7 @@ from typing import Literal, Optional
 from .router import route_query, QueryMode, explain_routing
 from .robbins import build_prompt as robbins_prompt, format_context as robbins_context
 from .hormozi import build_prompt as hormozi_prompt, format_context as hormozi_context
-from ..database import qdrant_client as db
+from database import qdrant_client as db
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 

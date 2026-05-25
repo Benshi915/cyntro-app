@@ -36,8 +36,8 @@ import yt_dlp
 import whisper
 
 from .auto_tagger import tag_chunks_batch
-from ..database.schema import KnowledgeChunk
-from ..database import qdrant_client as db
+from database.schema import KnowledgeChunk
+from database import qdrant_client as db
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 

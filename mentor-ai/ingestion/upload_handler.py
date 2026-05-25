@@ -33,8 +33,8 @@ from typing import List, Optional
 from .auto_tagger import tag_chunks_batch
 from .youtube_scraper import chunk_text, transcribe_audio
 from .pdf_reader import ingest_pdf
-from ..database.schema import KnowledgeChunk
-from ..database import qdrant_client as db
+from database.schema import KnowledgeChunk
+from database import qdrant_client as db
 
 # ── File type routing ─────────────────────────────────────────────────────────
 
