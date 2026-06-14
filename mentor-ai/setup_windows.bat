@@ -89,9 +89,9 @@ if not exist .venv (
     python -m venv .venv
 )
 call .venv\Scripts\activate.bat
-python -m pip install --quiet --upgrade pip
-echo [->] Installing packages...
-pip install --quiet -r requirements.txt
+python -m pip install --upgrade pip
+echo [->] Installing packages (this takes 5-15 min, you will see progress)...
+pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo.
     echo [ERROR] Failed to install Python packages.
@@ -105,7 +105,7 @@ echo [OK] Python packages installed
 echo.
 echo [->] Installing frontend packages...
 cd frontend
-call npm install --silent
+call npm install
 if %errorlevel% neq 0 (
     echo [ERROR] npm install failed. Is Node.js installed?
     pause
