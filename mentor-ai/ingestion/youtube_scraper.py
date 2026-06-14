@@ -203,6 +203,7 @@ def ingest_youtube(
     url: str,
     whisper_model: str = DEFAULT_WHISPER_MODEL,
     keep_audio: bool = False,
+    progress_callback=None,
 ) -> List[str]:
     """
     Full YouTube ingestion pipeline.
@@ -226,6 +227,7 @@ def ingest_youtube(
 
     with tmp_ctx as audio_dir:
         # ── Download ────────────────────────────────────────────
+        if progress_callback: progress_callback("downloading")
         print(f"\n[youtube] Downloading: {url}")
         audio_path, info = download_audio(url, audio_dir)
 
@@ -237,14 +239,17 @@ def ingest_youtube(
         print(f"[youtube] Duration : {duration}s")
 
         # ── Transcribe ──────────────────────────────────────────
+        if progress_callback: progress_callback("transcribing")
         transcript = transcribe_audio(audio_path, whisper_model)
 
         # ── Chunk ───────────────────────────────────────────────
+        if progress_callback: progress_callback("chunking")
         chunks = chunk_text(transcript)
         print(f"[chunker] Split into {len(chunks)} chunks "
               f"(~{CHUNK_WORD_SIZE} words each, {CHUNK_OVERLAP} word overlap).")
 
         # ── Tag + Store ─────────────────────────────────────────
+        if progress_callback: progress_callback("storing")
         ids = store_chunks(chunks, source_url=url, title=title)
 
         print(f"\n✅  Stored {len(ids)} chunks from: \"{title}\"")

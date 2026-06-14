@@ -208,6 +208,24 @@ def collection_stats() -> Dict[str, Any]:
     }
 
 
+def source_exists(url: str) -> bool:
+    """Return True if any chunks from this source_url are already stored."""
+    try:
+        client = get_client()
+        results, _ = client.scroll(
+            collection_name=COLLECTION_NAME,
+            scroll_filter=Filter(must=[
+                FieldCondition(key="source_url", match=MatchValue(value=url))
+            ]),
+            limit=1,
+            with_vectors=False,
+            with_payload=False,
+        )
+        return len(results) > 0
+    except Exception:
+        return False
+
+
 def list_sources() -> List[Dict[str, str]]:
     """
     Return a deduplicated list of all ingested sources.

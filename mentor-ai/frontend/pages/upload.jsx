@@ -13,13 +13,22 @@ const WHISPER_OPTIONS = [
 
 // ── Queue display ──────────────────────────────────────────────────────────
 
+const STEP_LABELS = {
+  downloading:  "Downloading audio…",
+  transcribing: "Transcribing speech to text (5-15 min)…",
+  chunking:     "Splitting into chunks…",
+  storing:      "Storing embeddings…",
+  starting:     "Starting…",
+};
+
 function QueueItem({ item }) {
   const icon = {
     pending:    <span className="text-neutral-500 text-base leading-none">○</span>,
     processing: <span className="animate-pulse text-amber-400 text-base leading-none">◉</span>,
     done:       <span className="text-emerald-400 text-base leading-none">✓</span>,
+    skipped:    <span className="text-neutral-400 text-base leading-none">—</span>,
     error:      <span className="text-red-400 text-base leading-none">✗</span>,
-  }[item.status];
+  }[item.status] ?? <span className="text-neutral-500 text-base leading-none">○</span>;
 
   return (
     <div className="flex items-start gap-3 py-2.5 border-b border-border last:border-0 text-sm">
@@ -29,11 +38,16 @@ function QueueItem({ item }) {
         {item.status === "done" && (
           <p className="text-xs text-emerald-400 mt-0.5">{item.chunks_stored} chunks stored</p>
         )}
+        {item.status === "skipped" && (
+          <p className="text-xs text-neutral-400 mt-0.5">Already in knowledge base — skipped</p>
+        )}
         {item.status === "error" && (
           <p className="text-xs text-red-400/80 mt-0.5">{item.error || "Unknown error"}</p>
         )}
         {item.status === "processing" && (
-          <p className="text-xs text-amber-400/70 mt-0.5">Processing — this may take a few minutes…</p>
+          <p className="text-xs text-amber-400/70 mt-0.5">
+            {STEP_LABELS[item.step] ?? "Processing…"}
+          </p>
         )}
         {item.status === "pending" && (
           <p className="text-xs text-neutral-500 mt-0.5">Waiting in queue</p>
@@ -45,7 +59,7 @@ function QueueItem({ item }) {
 
 function JobQueue({ job }) {
   if (!job) return null;
-  const done  = job.items.filter(i => i.status === "done").length;
+  const done  = job.items.filter(i => i.status === "done" || i.status === "skipped").length;
   const error = job.items.filter(i => i.status === "error").length;
   const total = job.items.length;
   const isDone = job.status === "done";

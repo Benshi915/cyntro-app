@@ -23,8 +23,10 @@ Start
 
 from __future__ import annotations
 
+import json
 import os
 import threading
+from pathlib import Path
 from typing import List, Optional
 from uuid import uuid4
 
@@ -55,6 +57,44 @@ app.add_middleware(
 )
 
 
+# ── Job persistence ───────────────────────────────────────────────────────────
+
+_JOBS_FILE = Path(__file__).resolve().parent.parent / "data" / "jobs.json"
+
+
+def _save_jobs() -> None:
+    try:
+        _JOBS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(_JOBS_FILE, "w") as f:
+            json.dump(_JOBS, f)
+    except Exception as e:
+        print(f"[jobs] Warning: could not save job state: {e}")
+
+
+def _load_and_resume_jobs() -> None:
+    if not _JOBS_FILE.exists():
+        return
+    try:
+        with open(_JOBS_FILE) as f:
+            saved = json.load(f)
+        _JOBS.update(saved)
+        for job_id, job in saved.items():
+            if job["status"] == "running":
+                print(f"[jobs] Resuming interrupted job {job_id} ({len(job['items'])} items)…")
+                items = [
+                    BatchItem(
+                        type=it["type"],
+                        url=it["url"],
+                        whisper_model=it.get("whisper_model", "base"),
+                    )
+                    for it in job["items"]
+                ]
+                t = threading.Thread(target=_run_batch, args=(job_id, items), daemon=True)
+                t.start()
+    except Exception as e:
+        print(f"[jobs] Warning: could not load saved jobs: {e}")
+
+
 # ── Startup: ensure Qdrant collection exists ──────────────────────────────────
 
 @app.on_event("startup")
@@ -64,6 +104,7 @@ def startup() -> None:
     except Exception as e:
         print(f"[startup] ⚠️  Could not connect to Qdrant: {e}")
         print("[startup] Is Docker running? → docker compose -f docker/docker-compose.yml up -d")
+    _load_and_resume_jobs()
 
 
 # ── Request / response models ─────────────────────────────────────────────────
@@ -124,18 +165,43 @@ class BatchRequest(BaseModel):
 def _run_batch(job_id: str, items: List[BatchItem]) -> None:
     job = _JOBS[job_id]
     for i, item in enumerate(items):
+        if job["items"][i]["status"] in ("done", "skipped"):
+            continue  # already completed — support resume after crash
+
         job["items"][i]["status"] = "processing"
+        job["items"][i]["step"] = "starting"
+        _save_jobs()
         try:
             if item.type == "youtube":
-                ids = youtube_scraper.ingest_youtube(url=item.url, whisper_model=item.whisper_model)
+                if db.source_exists(item.url):
+                    job["items"][i]["status"] = "skipped"
+                    job["items"][i]["step"] = None
+                    _save_jobs()
+                    continue
+
+                def on_progress(step, _i=i):
+                    job["items"][_i]["step"] = step
+                    _save_jobs()
+
+                ids = youtube_scraper.ingest_youtube(
+                    url=item.url,
+                    whisper_model=item.whisper_model,
+                    progress_callback=on_progress,
+                )
             else:
                 ids = web_scraper.ingest_url(item.url)
+
             job["items"][i]["status"] = "done"
+            job["items"][i]["step"] = None
             job["items"][i]["chunks_stored"] = len(ids)
+            _save_jobs()
         except Exception as e:
             job["items"][i]["status"] = "error"
+            job["items"][i]["step"] = None
             job["items"][i]["error"] = str(e)
+            _save_jobs()
     job["status"] = "done"
+    _save_jobs()
 
 
 # ── Endpoints: ingestion ──────────────────────────────────────────────────────
@@ -215,10 +281,19 @@ def ingest_batch(req: BatchRequest):
         "id": job_id,
         "status": "running",
         "items": [
-            {"url": it.url, "type": it.type, "status": "pending", "chunks_stored": 0, "error": None}
+            {
+                "url": it.url,
+                "type": it.type,
+                "whisper_model": it.whisper_model,
+                "status": "pending",
+                "chunks_stored": 0,
+                "error": None,
+                "step": None,
+            }
             for it in req.items
         ],
     }
+    _save_jobs()
     t = threading.Thread(target=_run_batch, args=(job_id, req.items), daemon=True)
     t.start()
     return {"job_id": job_id}

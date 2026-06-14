@@ -4,3 +4,4 @@ mentor-ai/.env
 mentor-ai/.venv/
 mentor-ai/frontend/.next/
 mentor-ai/frontend/node_modules/
+mentor-ai/data/
