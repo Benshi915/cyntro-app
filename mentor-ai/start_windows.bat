@@ -13,6 +13,15 @@ echo.
 
 cd /d "%~dp0"
 
+:: ── Auto-update from GitHub ───────────────────────────────────
+echo [->] Checking for updates...
+git pull origin claude/mentor-ai-data-ingestion-Hy8Dq >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [OK] Code is up to date
+) else (
+    echo [!] Could not check for updates (no internet or git issue - continuing anyway)
+)
+
 :: ── Check Docker is running ──────────────────────────────────────
 echo [->] Checking Docker...
 docker info >nul 2>&1
