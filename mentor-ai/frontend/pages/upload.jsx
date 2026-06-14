@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { ingestBatch, ingestUpload, getJob } from "../lib/api";
+import { ingestBatch, ingestUploadBatch, getJob } from "../lib/api";
 import LoadingDots from "../components/LoadingDots";
 
 const TABS = ["YouTube", "Web URL", "File"];
@@ -209,30 +209,37 @@ function BatchUrlForm({ type }) {
 // ── File Upload Tab ────────────────────────────────────────────────────────
 
 function FileUploadForm() {
-  const [files, setFiles]   = useState([]);   // Array of {file, title, status, chunks, error}
-  const [model, setModel]   = useState("base");
+  const [files, setFiles]       = useState([]);  // {file, title}
+  const [model, setModel]       = useState("base");
   const [dragging, setDragging] = useState(false);
-  const [running, setRunning]   = useState(false);
-  const inputRef            = useRef(null);
+  const [jobId, setJobId]       = useState(null);
+  const [job, setJob]           = useState(null);
+  const [error, setError]       = useState(null);
+  const pollRef                 = useRef(null);
+  const inputRef                = useRef(null);
 
-  const isAudioVideo = (f) => /\.(mp3|mp4|wav|m4a|mov|mkv|webm)$/i.test(f.name);
-  const isDone = files.length > 0 && files.every(f => f.status === "done" || f.status === "error");
+  const isRunning = job?.status === "running";
+  const isDone    = job?.status === "done";
+
+  useEffect(() => {
+    if (!jobId) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const data = await getJob(jobId);
+        setJob(data);
+        if (data.status === "done") clearInterval(pollRef.current);
+      } catch {}
+    }, 2000);
+    return () => clearInterval(pollRef.current);
+  }, [jobId]);
 
   function addFiles(newFiles) {
+    if (isRunning) return;
     const entries = Array.from(newFiles).map(f => ({
       file: f,
-      title: f.name.replace(/\.[^.]+$/, ""),
-      status: "pending",
-      chunks: 0,
-      error: null,
+      title: f.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
     }));
     setFiles(prev => [...prev, ...entries]);
-  }
-
-  function handleDrop(e) {
-    e.preventDefault();
-    setDragging(false);
-    addFiles(e.dataTransfer.files);
   }
 
   function removeFile(i) {
@@ -243,36 +250,37 @@ function FileUploadForm() {
     setFiles(prev => prev.map((f, idx) => idx === i ? { ...f, title } : f));
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!files.length || running) return;
-    setRunning(true);
-
-    for (let i = 0; i < files.length; i++) {
-      if (files[i].status === "done") continue;
-      setFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "processing" } : f));
-      try {
-        const res = await ingestUpload({ file: files[i].file, title: files[i].title, whisperModel: model });
-        setFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "done", chunks: res.chunks_stored } : f));
-      } catch (err) {
-        setFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "error", error: err.message } : f));
-      }
+  async function handleSubmit() {
+    if (!files.length || isRunning) return;
+    setError(null);
+    try {
+      const res = await ingestUploadBatch({ files, whisperModel: model });
+      setJobId(res.job_id);
+      setJob({
+        id: res.job_id,
+        status: "running",
+        items: files.map(({ file }) => ({
+          url: file.name, status: "pending", chunks_stored: 0, error: null,
+        })),
+      });
+      setFiles([]);
+    } catch (err) {
+      setError(err.message);
     }
-    setRunning(false);
   }
 
-  const doneCount  = files.filter(f => f.status === "done").length;
-  const errorCount = files.filter(f => f.status === "error").length;
+  const doneCount  = job?.items.filter(i => i.status === "done").length ?? 0;
+  const errorCount = job?.items.filter(i => i.status === "error").length ?? 0;
 
   return (
     <div className="space-y-4">
       <div
-        onClick={() => !running && inputRef.current?.click()}
+        onClick={() => !isRunning && inputRef.current?.click()}
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
+        onDrop={e => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
         className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-          running   ? "border-border opacity-40 cursor-not-allowed" :
+          isRunning ? "border-border opacity-40 cursor-not-allowed" :
           dragging  ? "border-accent bg-accent/5 cursor-copy" :
                       "border-border hover:border-neutral-500 cursor-pointer"
         }`}
@@ -289,17 +297,15 @@ function FileUploadForm() {
         <p className="text-muted text-xs mt-1">PDF · MP3 · MP4 · WAV · TXT · MD — select as many as you want</p>
       </div>
 
-      {files.length > 0 && (
+      {files.length > 0 && !isRunning && (
         <>
           <div>
             <label className="block text-xs text-muted mb-1.5">Whisper model (for audio/video files)</label>
             <select
               value={model}
               onChange={e => setModel(e.target.value)}
-              disabled={running}
               className="w-full bg-panel border border-border rounded-lg px-3 py-2.5 text-sm
-                         text-neutral-200 focus:outline-none focus:ring-1 focus:ring-accent/40
-                         disabled:opacity-40"
+                         text-neutral-200 focus:outline-none focus:ring-1 focus:ring-accent/40"
             >
               {WHISPER_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -307,87 +313,78 @@ function FileUploadForm() {
             </select>
           </div>
 
-          <div className="bg-neutral-900 border border-border rounded-xl p-4 space-y-0">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Files</p>
-              {(running || isDone) && (
-                <span className="text-xs text-neutral-500">
-                  {doneCount}/{files.length} done{errorCount > 0 ? `, ${errorCount} failed` : ""}
-                </span>
-              )}
-            </div>
-            {files.map((entry, i) => {
-              const icon = {
-                pending:    <span className="text-neutral-500">○</span>,
-                processing: <span className="animate-pulse text-amber-400">◉</span>,
-                done:       <span className="text-emerald-400">✓</span>,
-                error:      <span className="text-red-400">✗</span>,
-              }[entry.status];
-
-              return (
-                <div key={i} className="flex items-start gap-3 py-2.5 border-b border-border last:border-0 text-sm">
-                  <span className="mt-0.5 shrink-0 text-base leading-none">{icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <input
-                      type="text"
-                      value={entry.title}
-                      onChange={e => updateTitle(i, e.target.value)}
-                      disabled={running}
-                      className="w-full bg-transparent text-neutral-300 text-sm focus:outline-none
-                                 focus:ring-1 focus:ring-accent/40 rounded px-1 disabled:opacity-60"
-                    />
-                    <p className="text-xs text-neutral-500 mt-0.5 px-1">
-                      {entry.file.name} · {(entry.file.size / 1024 / 1024).toFixed(1)} MB
-                    </p>
-                    {entry.status === "done" && (
-                      <p className="text-xs text-emerald-400 mt-0.5 px-1">{entry.chunks} chunks stored</p>
-                    )}
-                    {entry.status === "processing" && isAudioVideo(entry.file) && (
-                      <p className="text-xs text-amber-400/70 mt-0.5 px-1">Transcribing — this may take several minutes…</p>
-                    )}
-                    {entry.status === "processing" && !isAudioVideo(entry.file) && (
-                      <p className="text-xs text-amber-400/70 mt-0.5 px-1">Processing…</p>
-                    )}
-                    {entry.status === "error" && (
-                      <p className="text-xs text-red-400/80 mt-0.5 px-1">{entry.error}</p>
-                    )}
-                  </div>
-                  {!running && entry.status === "pending" && (
-                    <button
-                      type="button"
-                      onClick={() => removeFile(i)}
-                      className="text-neutral-500 hover:text-red-400 text-xs mt-0.5 shrink-0"
-                    >✕</button>
-                  )}
+          <div className="bg-neutral-900 border border-border rounded-xl p-4">
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-3">
+              {files.length} file{files.length !== 1 ? "s" : ""} ready
+            </p>
+            {files.map((entry, i) => (
+              <div key={i} className="flex items-center gap-3 py-2 border-b border-border last:border-0 text-sm">
+                <div className="flex-1 min-w-0">
+                  <input
+                    type="text"
+                    value={entry.title}
+                    onChange={e => updateTitle(i, e.target.value)}
+                    className="w-full bg-transparent text-neutral-300 text-sm focus:outline-none
+                               focus:ring-1 focus:ring-accent/40 rounded px-1"
+                  />
+                  <p className="text-xs text-neutral-500 mt-0.5 px-1">
+                    {entry.file.name} · {(entry.file.size / 1024 / 1024).toFixed(1)} MB
+                  </p>
                 </div>
-              );
-            })}
+                <button
+                  type="button"
+                  onClick={() => removeFile(i)}
+                  className="text-neutral-500 hover:text-red-400 text-xs shrink-0"
+                >✕</button>
+              </div>
+            ))}
           </div>
+
+          {error && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="w-full py-2.5 rounded-lg bg-accent text-black text-sm font-semibold
+                       hover:bg-amber-400 transition-colors"
+          >
+            Start ingesting {files.length} file{files.length !== 1 ? "s" : ""}
+          </button>
         </>
       )}
 
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={running || !files.length || isDone}
-        className="w-full py-2.5 rounded-lg bg-accent text-black text-sm font-semibold
-                   disabled:opacity-40 hover:bg-amber-400 transition-colors"
-      >
-        {running
-          ? `Processing ${doneCount + errorCount + 1} / ${files.length}…`
-          : isDone
-            ? `Done — ${doneCount} file${doneCount !== 1 ? "s" : ""} ingested`
-            : `Ingest ${files.length} file${files.length !== 1 ? "s" : ""}`}
-      </button>
-
-      {isDone && !running && (
-        <button
-          type="button"
-          onClick={() => setFiles([])}
-          className="w-full py-2 text-xs text-neutral-500 hover:text-neutral-300"
-        >
-          Clear and start over
-        </button>
+      {job && (
+        <div className="bg-neutral-900 border border-border rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Queue</p>
+            <div className="flex items-center gap-3">
+              {isDone ? (
+                <span className="text-xs text-emerald-400">
+                  {doneCount}/{job.items.length} done{errorCount > 0 ? `, ${errorCount} failed` : ""}
+                </span>
+              ) : (
+                <>
+                  <span className="text-xs text-neutral-500">{doneCount}/{job.items.length}</span>
+                  <LoadingDots />
+                </>
+              )}
+            </div>
+          </div>
+          {job.items.map((item, i) => <QueueItem key={i} item={item} />)}
+          {isDone && (
+            <button
+              type="button"
+              onClick={() => { setJob(null); setJobId(null); }}
+              className="mt-3 w-full py-1.5 text-xs text-neutral-500 hover:text-neutral-300"
+            >
+              Clear and upload more
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

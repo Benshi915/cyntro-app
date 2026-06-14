@@ -31,6 +31,8 @@ from typing import List, Optional
 from uuid import uuid4
 
 from dotenv import load_dotenv
+import json as _json
+
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
@@ -204,6 +206,42 @@ def _run_batch(job_id: str, items: List[BatchItem]) -> None:
     _save_jobs()
 
 
+def _run_file_batch(job_id: str) -> None:
+    job = _JOBS[job_id]
+    for i, item in enumerate(job["items"]):
+        if item["status"] in ("done", "skipped"):
+            continue
+
+        job["items"][i]["status"] = "processing"
+        _save_jobs()
+        try:
+            path = Path(item["path"])
+            ids = upload_handler.ingest_upload(
+                str(path),
+                title=item.get("title"),
+                source_url=f"upload://{item['url']}",
+                whisper_model=item.get("whisper_model", "base"),
+            )
+            path.unlink(missing_ok=True)
+            job["items"][i]["status"] = "done"
+            job["items"][i]["chunks_stored"] = len(ids)
+            _save_jobs()
+        except Exception as e:
+            job["items"][i]["status"] = "error"
+            job["items"][i]["error"] = str(e)
+            _save_jobs()
+
+    job["status"] = "done"
+    # Clean up upload dir if empty
+    try:
+        upload_dir = Path(job["items"][0]["path"]).parent
+        if upload_dir.exists() and not any(upload_dir.iterdir()):
+            upload_dir.rmdir()
+    except Exception:
+        pass
+    _save_jobs()
+
+
 # ── Endpoints: ingestion ──────────────────────────────────────────────────────
 
 @app.post("/ingest/youtube", response_model=IngestResponse, tags=["Ingestion"])
@@ -263,6 +301,52 @@ async def ingest_file_upload(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ingest/upload/batch", tags=["Ingestion"])
+async def ingest_upload_batch(
+    files: List[UploadFile] = File(...),
+    titles: str = Form("[]"),
+    whisper_model: str = Form("base"),
+):
+    """
+    Upload multiple files and process them in the background.
+
+    Returns a job_id immediately. Poll GET /jobs/{job_id} for progress.
+    Form fields: files (multiple), titles (JSON array of strings), whisper_model.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    title_list = _json.loads(titles) if titles else []
+    job_id = str(uuid4())
+    upload_dir = _JOBS_FILE.parent / "uploads" / job_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    job_items = []
+    for i, f in enumerate(files):
+        content = await f.read()
+        safe_name = Path(f.filename or f"file_{i}").name
+        file_path = upload_dir / safe_name
+        file_path.write_bytes(content)
+        title = title_list[i] if i < len(title_list) else Path(safe_name).stem.replace("-", " ").replace("_", " ").title()
+        job_items.append({
+            "url": safe_name,
+            "type": "file",
+            "path": str(file_path),
+            "title": title,
+            "whisper_model": whisper_model,
+            "status": "pending",
+            "chunks_stored": 0,
+            "error": None,
+            "step": None,
+        })
+
+    _JOBS[job_id] = {"id": job_id, "status": "running", "items": job_items}
+    _save_jobs()
+    t = threading.Thread(target=_run_file_batch, args=(job_id,), daemon=True)
+    t.start()
+    return {"job_id": job_id}
 
 
 @app.post("/ingest/batch", tags=["Ingestion"])

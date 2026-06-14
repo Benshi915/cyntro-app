@@ -53,6 +53,18 @@ export async function ingestUpload({ file, title = "", whisperModel = "base" }) 
   return request("/ingest/upload", { method: "POST", body: form });
 }
 
+export async function ingestUploadBatch({ files, whisperModel = "base" }) {
+  const form = new FormData();
+  const titles = [];
+  for (const { file, title } of files) {
+    form.append("files", file);
+    titles.push(title || file.name.replace(/\.[^.]+$/, ""));
+  }
+  form.append("titles", JSON.stringify(titles));
+  form.append("whisper_model", whisperModel);
+  return request("/ingest/upload/batch", { method: "POST", body: form });
+}
+
 export async function ingestBatch({ items }) {
   return request("/ingest/batch", {
     method: "POST",
