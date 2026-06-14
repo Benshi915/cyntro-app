@@ -209,131 +209,187 @@ function BatchUrlForm({ type }) {
 // ── File Upload Tab ────────────────────────────────────────────────────────
 
 function FileUploadForm() {
-  const [file, setFile]         = useState(null);
-  const [title, setTitle]       = useState("");
-  const [model, setModel]       = useState("base");
+  const [files, setFiles]   = useState([]);   // Array of {file, title, status, chunks, error}
+  const [model, setModel]   = useState("base");
   const [dragging, setDragging] = useState(false);
-  const [loading, setLoading]   = useState(false);
-  const [status, setStatus]     = useState(null);
-  const inputRef                = useRef(null);
+  const [running, setRunning]   = useState(false);
+  const inputRef            = useRef(null);
+
+  const isAudioVideo = (f) => /\.(mp3|mp4|wav|m4a|mov|mkv|webm)$/i.test(f.name);
+  const isDone = files.length > 0 && files.every(f => f.status === "done" || f.status === "error");
+
+  function addFiles(newFiles) {
+    const entries = Array.from(newFiles).map(f => ({
+      file: f,
+      title: f.name.replace(/\.[^.]+$/, ""),
+      status: "pending",
+      chunks: 0,
+      error: null,
+    }));
+    setFiles(prev => [...prev, ...entries]);
+  }
 
   function handleDrop(e) {
     e.preventDefault();
     setDragging(false);
-    const f = e.dataTransfer.files[0];
-    if (f) { setFile(f); setTitle(f.name.replace(/\.[^.]+$/, "")); }
+    addFiles(e.dataTransfer.files);
+  }
+
+  function removeFile(i) {
+    setFiles(prev => prev.filter((_, idx) => idx !== i));
+  }
+
+  function updateTitle(i, title) {
+    setFiles(prev => prev.map((f, idx) => idx === i ? { ...f, title } : f));
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!file) return;
-    setLoading(true);
-    setStatus({ type: "info", title: `Processing ${file.name}…` });
-    try {
-      const res = await ingestUpload({ file, title, whisperModel: model });
-      setStatus({ type: "success", title: `Done — ${res.chunks_stored} chunks stored.` });
-      setFile(null);
-      setTitle("");
-    } catch (err) {
-      setStatus({ type: "error", title: "Failed", detail: err.message });
-    } finally {
-      setLoading(false);
+    if (!files.length || running) return;
+    setRunning(true);
+
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].status === "done") continue;
+      setFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "processing" } : f));
+      try {
+        const res = await ingestUpload({ file: files[i].file, title: files[i].title, whisperModel: model });
+        setFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "done", chunks: res.chunks_stored } : f));
+      } catch (err) {
+        setFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: "error", error: err.message } : f));
+      }
     }
+    setRunning(false);
   }
 
-  const isAudioVideo = file && /\.(mp3|mp4|wav|m4a|mov|mkv|webm)$/i.test(file.name);
+  const doneCount  = files.filter(f => f.status === "done").length;
+  const errorCount = files.filter(f => f.status === "error").length;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="space-y-4">
       <div
-        onClick={() => inputRef.current?.click()}
+        onClick={() => !running && inputRef.current?.click()}
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
-        className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-          dragging          ? "border-accent bg-accent/5" :
-          file              ? "border-emerald-500/50 bg-emerald-500/5" :
-                              "border-border hover:border-neutral-500"
+        className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+          running   ? "border-border opacity-40 cursor-not-allowed" :
+          dragging  ? "border-accent bg-accent/5 cursor-copy" :
+                      "border-border hover:border-neutral-500 cursor-pointer"
         }`}
       >
         <input
           ref={inputRef}
           type="file"
           accept=".pdf,.mp3,.mp4,.wav,.m4a,.mov,.txt,.md"
+          multiple
           className="hidden"
-          onChange={e => {
-            const f = e.target.files[0];
-            if (f) { setFile(f); setTitle(f.name.replace(/\.[^.]+$/, "")); }
-          }}
+          onChange={e => addFiles(e.target.files)}
         />
-        {file ? (
-          <div>
-            <p className="text-emerald-400 font-medium">{file.name}</p>
-            <p className="text-muted text-xs mt-1">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
-          </div>
-        ) : (
-          <div>
-            <p className="text-neutral-400 text-sm">Drop a file here or click to browse</p>
-            <p className="text-muted text-xs mt-1">PDF · MP3 · MP4 · WAV · TXT · MD</p>
-          </div>
-        )}
+        <p className="text-neutral-400 text-sm">Drop files here or click to browse</p>
+        <p className="text-muted text-xs mt-1">PDF · MP3 · MP4 · WAV · TXT · MD — select as many as you want</p>
       </div>
 
-      {file && (
+      {files.length > 0 && (
         <>
           <div>
-            <label className="block text-xs text-muted mb-1.5">Title (optional)</label>
-            <input
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="e.g. $100M Offers — Alex Hormozi"
+            <label className="block text-xs text-muted mb-1.5">Whisper model (for audio/video files)</label>
+            <select
+              value={model}
+              onChange={e => setModel(e.target.value)}
+              disabled={running}
               className="w-full bg-panel border border-border rounded-lg px-3 py-2.5 text-sm
-                         text-neutral-100 placeholder:text-muted focus:outline-none
-                         focus:ring-1 focus:ring-accent/50 focus:border-accent/50"
-            />
+                         text-neutral-200 focus:outline-none focus:ring-1 focus:ring-accent/40
+                         disabled:opacity-40"
+            >
+              {WHISPER_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
           </div>
 
-          {isAudioVideo && (
-            <div>
-              <label className="block text-xs text-muted mb-1.5">Whisper model</label>
-              <select
-                value={model}
-                onChange={e => setModel(e.target.value)}
-                className="w-full bg-panel border border-border rounded-lg px-3 py-2.5 text-sm
-                           text-neutral-200 focus:outline-none focus:ring-1 focus:ring-accent/40"
-              >
-                {WHISPER_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+          <div className="bg-neutral-900 border border-border rounded-xl p-4 space-y-0">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Files</p>
+              {(running || isDone) && (
+                <span className="text-xs text-neutral-500">
+                  {doneCount}/{files.length} done{errorCount > 0 ? `, ${errorCount} failed` : ""}
+                </span>
+              )}
             </div>
-          )}
+            {files.map((entry, i) => {
+              const icon = {
+                pending:    <span className="text-neutral-500">○</span>,
+                processing: <span className="animate-pulse text-amber-400">◉</span>,
+                done:       <span className="text-emerald-400">✓</span>,
+                error:      <span className="text-red-400">✗</span>,
+              }[entry.status];
+
+              return (
+                <div key={i} className="flex items-start gap-3 py-2.5 border-b border-border last:border-0 text-sm">
+                  <span className="mt-0.5 shrink-0 text-base leading-none">{icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <input
+                      type="text"
+                      value={entry.title}
+                      onChange={e => updateTitle(i, e.target.value)}
+                      disabled={running}
+                      className="w-full bg-transparent text-neutral-300 text-sm focus:outline-none
+                                 focus:ring-1 focus:ring-accent/40 rounded px-1 disabled:opacity-60"
+                    />
+                    <p className="text-xs text-neutral-500 mt-0.5 px-1">
+                      {entry.file.name} · {(entry.file.size / 1024 / 1024).toFixed(1)} MB
+                    </p>
+                    {entry.status === "done" && (
+                      <p className="text-xs text-emerald-400 mt-0.5 px-1">{entry.chunks} chunks stored</p>
+                    )}
+                    {entry.status === "processing" && isAudioVideo(entry.file) && (
+                      <p className="text-xs text-amber-400/70 mt-0.5 px-1">Transcribing — this may take several minutes…</p>
+                    )}
+                    {entry.status === "processing" && !isAudioVideo(entry.file) && (
+                      <p className="text-xs text-amber-400/70 mt-0.5 px-1">Processing…</p>
+                    )}
+                    {entry.status === "error" && (
+                      <p className="text-xs text-red-400/80 mt-0.5 px-1">{entry.error}</p>
+                    )}
+                  </div>
+                  {!running && entry.status === "pending" && (
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      className="text-neutral-500 hover:text-red-400 text-xs mt-0.5 shrink-0"
+                    >✕</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </>
       )}
 
-      {loading && <LoadingDots label="Processing file — do not close this tab" />}
-
-      {status && (
-        <div className={`rounded-xl border p-4 text-sm space-y-1 ${
-          status.type === "error"   ? "bg-red-500/10 border-red-500/30 text-red-400" :
-          status.type === "success" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" :
-                                      "bg-neutral-800 border-border text-neutral-300"
-        }`}>
-          <p className="font-medium">{status.title}</p>
-          {status.detail && <p className="text-xs opacity-70">{status.detail}</p>}
-        </div>
-      )}
-
       <button
-        type="submit"
-        disabled={loading || !file}
+        type="button"
+        onClick={handleSubmit}
+        disabled={running || !files.length || isDone}
         className="w-full py-2.5 rounded-lg bg-accent text-black text-sm font-semibold
                    disabled:opacity-40 hover:bg-amber-400 transition-colors"
       >
-        {loading ? "Processing…" : "Ingest file"}
+        {running
+          ? `Processing ${doneCount + errorCount + 1} / ${files.length}…`
+          : isDone
+            ? `Done — ${doneCount} file${doneCount !== 1 ? "s" : ""} ingested`
+            : `Ingest ${files.length} file${files.length !== 1 ? "s" : ""}`}
       </button>
-    </form>
+
+      {isDone && !running && (
+        <button
+          type="button"
+          onClick={() => setFiles([])}
+          className="w-full py-2 text-xs text-neutral-500 hover:text-neutral-300"
+        >
+          Clear and start over
+        </button>
+      )}
+    </div>
   );
 }
 
