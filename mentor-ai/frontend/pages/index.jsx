@@ -27,9 +27,14 @@ export default function AskPage() {
   const [routing, setRouting]     = useState(null);   // { mode, emotional_score, ... }
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState(null);
+  const [isMac, setIsMac]         = useState(false);
 
   const textareaRef = useRef(null);
   const resultRef   = useRef(null);
+
+  useEffect(() => {
+    setIsMac(/mac/i.test(navigator.platform));
+  }, []);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -164,7 +169,7 @@ export default function AskPage() {
           >
             {loading ? "Building…" : "Build prompt"}
             {!loading && (
-              <span className="text-xs opacity-60">⌘↵</span>
+              <span className="text-xs opacity-60">{isMac ? "⌘↵" : "Ctrl+↵"}</span>
             )}
           </button>
         </div>

@@ -185,13 +185,15 @@ def search(
     qdrant_filter = Filter(must=must_conditions) if must_conditions else None
 
     client = get_client()
-    hits = client.search(
+    # qdrant-client >=1.9 replaced client.search() with client.query_points()
+    response = client.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_vector,
+        query=query_vector,
         limit=limit,
         query_filter=qdrant_filter,
         score_threshold=score_threshold if score_threshold > 0 else None,
     )
+    hits = response.points
 
     return [{"id": h.id, "score": round(h.score, 4), **h.payload} for h in hits]
 
