@@ -11,6 +11,7 @@ openai-whisper>=20231117
 yt-dlp>=2024.1.1
 
 # ── Web scraping (future: web_scraper.py) ─────────────────────────────────────
+lxml>=5.3.0                # pin binary-friendly version (avoids C++ Build Tools on Windows)
 crawl4ai>=0.3.0
 
 # ── PDF reading (future: pdf_reader.py) ───────────────────────────────────────

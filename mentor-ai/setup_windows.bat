@@ -90,6 +90,16 @@ if not exist .venv (
 )
 call .venv\Scripts\activate.bat
 python -m pip install --quiet --upgrade pip
+
+:: Install lxml as pre-built binary first (avoids needing C++ Build Tools)
+echo [->] Installing lxml (pre-built)...
+pip install --quiet --only-binary :all: lxml
+if %errorlevel% neq 0 (
+    echo [->] Trying alternative lxml install...
+    pip install --quiet lxml==5.3.0
+)
+
+echo [->] Installing remaining packages...
 pip install --quiet -r requirements.txt
 if %errorlevel% neq 0 (
     echo.
