@@ -200,11 +200,18 @@ def collection_stats() -> Dict[str, Any]:
     """Return basic stats about the knowledge base collection."""
     client = get_client()
     info = client.get_collection(COLLECTION_NAME)
+    # qdrant-client >=1.9 uses points_count; older versions use vectors_count
+    total = (
+        getattr(info, "points_count", None)
+        or getattr(info, "vectors_count", None)
+        or 0
+    )
+    indexed = getattr(info, "indexed_vectors_count", None) or 0
     return {
         "collection": COLLECTION_NAME,
-        "total_vectors": info.vectors_count,
-        "indexed_vectors": info.indexed_vectors_count,
-        "status": info.status,
+        "total_vectors": total,
+        "indexed_vectors": indexed,
+        "status": str(info.status),
     }
 
 
