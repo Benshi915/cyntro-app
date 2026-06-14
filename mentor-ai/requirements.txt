@@ -10,9 +10,9 @@ openai-whisper>=20231117
 # ── YouTube download ───────────────────────────────────────────────────────────
 yt-dlp>=2024.1.1
 
-# ── Web scraping (future: web_scraper.py) ─────────────────────────────────────
-lxml>=5.3.0                # pin binary-friendly version (avoids C++ Build Tools on Windows)
-crawl4ai>=0.3.0
+# ── Web scraping ──────────────────────────────────────────────────────────────
+requests>=2.31.0           # HTTP fetching (pure Python)
+trafilatura>=1.8.0         # article extraction, no C++ needed
 
 # ── PDF reading (future: pdf_reader.py) ───────────────────────────────────────
 pypdf2>=3.0.0

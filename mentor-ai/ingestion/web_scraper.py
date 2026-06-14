@@ -1,5 +1,5 @@
 """
-Web scraping pipeline using Crawl4AI.
+Web scraping pipeline using requests + trafilatura.
 
 Scrapes articles, interviews, and blog posts from the internet,
 then chunks, tags, and stores them in Qdrant — same pipeline as youtube_scraper.
@@ -18,15 +18,13 @@ CLI
 
 from __future__ import annotations
 
-import asyncio
 import re
 import sys
 from typing import List, Optional
 from urllib.parse import urlparse
 
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
-from crawl4ai.content_filter_strategy import PruningContentFilter
-from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+import requests
+import trafilatura
 
 from .auto_tagger import tag_chunks_batch
 from .youtube_scraper import chunk_text
@@ -35,67 +33,48 @@ from database import qdrant_client as db
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-# Minimum characters in a scraped page to bother storing
 MIN_CONTENT_LENGTH = 300
 
-# Crawl4AI config: prune boilerplate (navbars, footers, ads)
-_CRAWLER_CONFIG = CrawlerRunConfig(
-    cache_mode=CacheMode.BYPASS,
-    markdown_generator=DefaultMarkdownGenerator(
-        content_filter=PruningContentFilter(
-            threshold=0.48,
-            threshold_type="fixed",
-            min_word_threshold=50,
-        )
-    ),
-    word_count_threshold=10,
-    exclude_external_links=True,
-    remove_overlay_elements=True,
-)
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+}
 
 
 # ── Scrape a single URL ───────────────────────────────────────────────────────
 
-async def _scrape(url: str) -> tuple[str, str]:
-    """
-    Scrape a URL and return (title, clean_markdown_text).
+def _scrape(url: str) -> tuple[str, str]:
+    """Fetch a URL and return (title, clean_text)."""
+    try:
+        resp = requests.get(url, headers=_HEADERS, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Failed to fetch {url}: {e}")
 
-    Uses Crawl4AI's pruning filter to strip navbars, ads, and boilerplate,
-    leaving only the main article content.
-    """
-    async with AsyncWebCrawler() as crawler:
-        result = await crawler.arun(url=url, config=_CRAWLER_CONFIG)
+    html = resp.text
 
-    if not result.success:
-        raise RuntimeError(f"Failed to scrape {url}: {result.error_message}")
-
-    # Prefer fit_markdown (filtered) over raw markdown
-    content = (
-        result.markdown_v2.fit_markdown
-        if result.markdown_v2 and result.markdown_v2.fit_markdown
-        else result.markdown
+    # trafilatura extracts main article text, strips navbars/ads/boilerplate
+    content = trafilatura.extract(
+        html,
+        include_comments=False,
+        include_tables=False,
+        no_fallback=False,
     )
 
-    # Strip markdown formatting to plain text for embedding
-    content = _markdown_to_plain(content or "")
-    title = result.metadata.get("title", "") or _title_from_url(url)
+    if not content:
+        raise RuntimeError(f"Could not extract readable content from {url}")
+
+    # Extract title from metadata
+    meta = trafilatura.extract_metadata(html)
+    title = (meta.title if meta and meta.title else None) or _title_from_url(url)
 
     return title.strip(), content.strip()
 
 
-def _markdown_to_plain(md: str) -> str:
-    """Strip the most common markdown tokens to get cleaner plain text."""
-    md = re.sub(r"#{1,6}\s*", "", md)       # headings
-    md = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", md)  # bold/italic
-    md = re.sub(r"`[^`]+`", "", md)          # inline code
-    md = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", md)  # links/images
-    md = re.sub(r"[-*]\s+", "", md)          # list bullets
-    md = re.sub(r"\n{3,}", "\n\n", md)       # collapse blank lines
-    return md.strip()
-
-
 def _title_from_url(url: str) -> str:
-    """Derive a rough title from the URL path when metadata is missing."""
     path = urlparse(url).path.rstrip("/")
     slug = path.split("/")[-1] if path else url
     return slug.replace("-", " ").replace("_", " ").title()
@@ -103,19 +82,18 @@ def _title_from_url(url: str) -> str:
 
 # ── Full ingest pipeline ──────────────────────────────────────────────────────
 
-async def _ingest_url_async(url: str) -> List[str]:
-    """Async implementation of the full ingest pipeline for one URL."""
+def _ingest_one(url: str) -> List[str]:
     db.init_collection()
 
     print(f"\n[web] Scraping: {url}")
-    title, content = await _scrape(url)
+    title, content = _scrape(url)
 
     if len(content) < MIN_CONTENT_LENGTH:
         print(f"[web] ⚠️  Content too short ({len(content)} chars), skipping.")
         return []
 
-    print(f"[web] Title   : {title}")
-    print(f"[web] Length  : {len(content.split())} words")
+    print(f"[web] Title  : {title}")
+    print(f"[web] Length : {len(content.split())} words")
 
     chunks = chunk_text(content)
     print(f"[chunker] Split into {len(chunks)} chunks.")
@@ -142,28 +120,20 @@ async def _ingest_url_async(url: str) -> List[str]:
 
 
 def ingest_url(url: str) -> List[str]:
-    """Scrape, chunk, tag, and store a single web URL. Synchronous wrapper."""
-    return asyncio.run(_ingest_url_async(url))
-
-
-async def _ingest_urls_async(urls: List[str]) -> dict[str, List[str]]:
-    """Ingest multiple URLs concurrently."""
-    tasks = [_ingest_url_async(url) for url in urls]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    output: dict[str, List[str]] = {}
-    for url, result in zip(urls, results):
-        if isinstance(result, Exception):
-            print(f"[web] ❌  Failed {url}: {result}")
-            output[url] = []
-        else:
-            output[url] = result
-    return output
+    """Scrape, chunk, tag, and store a single web URL."""
+    return _ingest_one(url)
 
 
 def ingest_urls(urls: List[str]) -> dict[str, List[str]]:
-    """Scrape, chunk, tag, and store a list of URLs concurrently."""
-    return asyncio.run(_ingest_urls_async(urls))
+    """Scrape, chunk, tag, and store a list of URLs sequentially."""
+    output: dict[str, List[str]] = {}
+    for url in urls:
+        try:
+            output[url] = _ingest_one(url)
+        except Exception as e:
+            print(f"[web] ❌  Failed {url}: {e}")
+            output[url] = []
+    return output
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────
