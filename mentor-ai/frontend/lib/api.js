@@ -53,6 +53,18 @@ export async function ingestUpload({ file, title = "", whisperModel = "base" }) 
   return request("/ingest/upload", { method: "POST", body: form });
 }
 
+export async function ingestBatch({ items }) {
+  return request("/ingest/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+}
+
+export async function getJob(jobId) {
+  return request(`/jobs/${jobId}`);
+}
+
 // ── Knowledge base ────────────────────────────────────────────────────────────
 
 export async function getSources() {

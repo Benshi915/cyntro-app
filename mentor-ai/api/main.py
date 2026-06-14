@@ -6,6 +6,8 @@ Endpoints
   POST /ingest/youtube          Ingest a YouTube video by URL
   POST /ingest/url              Scrape and ingest a web article
   POST /ingest/upload           Upload a file (PDF, audio, video, text)
+  POST /ingest/batch            Ingest multiple YouTube/web URLs in one shot (background)
+  GET  /jobs/{job_id}           Poll status of a batch ingestion job
   GET  /search                  Semantic search the knowledge base
   GET  /sources                 List all ingested sources
   GET  /stats                   Collection statistics
@@ -22,7 +24,9 @@ Start
 from __future__ import annotations
 
 import os
+import threading
 from typing import List, Optional
+from uuid import uuid4
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
@@ -102,10 +106,36 @@ class SearchResult(BaseModel):
     timestamp: str
 
 
-# ── Background task wrapper ───────────────────────────────────────────────────
-# For heavy operations (Whisper, scraping) we accept the request immediately
-# and run ingestion in the background. For simplicity here we run synchronously
-# and return results — background mode can be toggled with ?async=true later.
+# ── Batch job store (in-memory) ───────────────────────────────────────────────
+
+_JOBS: dict[str, dict] = {}
+
+
+class BatchItem(BaseModel):
+    type: str           # "youtube" | "url"
+    url: str
+    whisper_model: str = "base"
+
+
+class BatchRequest(BaseModel):
+    items: List[BatchItem]
+
+
+def _run_batch(job_id: str, items: List[BatchItem]) -> None:
+    job = _JOBS[job_id]
+    for i, item in enumerate(items):
+        job["items"][i]["status"] = "processing"
+        try:
+            if item.type == "youtube":
+                ids = youtube_scraper.ingest_youtube(url=item.url, whisper_model=item.whisper_model)
+            else:
+                ids = web_scraper.ingest_url(item.url)
+            job["items"][i]["status"] = "done"
+            job["items"][i]["chunks_stored"] = len(ids)
+        except Exception as e:
+            job["items"][i]["status"] = "error"
+            job["items"][i]["error"] = str(e)
+    job["status"] = "done"
 
 
 # ── Endpoints: ingestion ──────────────────────────────────────────────────────
@@ -167,6 +197,39 @@ async def ingest_file_upload(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ingest/batch", tags=["Ingestion"])
+def ingest_batch(req: BatchRequest):
+    """
+    Kick off a batch of YouTube / web-URL ingestion jobs in the background.
+
+    Returns a job_id immediately. Poll GET /jobs/{job_id} to track progress.
+    Each item status cycles: pending → processing → done | error.
+    """
+    if not req.items:
+        raise HTTPException(status_code=400, detail="items list is empty")
+
+    job_id = str(uuid4())
+    _JOBS[job_id] = {
+        "id": job_id,
+        "status": "running",
+        "items": [
+            {"url": it.url, "type": it.type, "status": "pending", "chunks_stored": 0, "error": None}
+            for it in req.items
+        ],
+    }
+    t = threading.Thread(target=_run_batch, args=(job_id, req.items), daemon=True)
+    t.start()
+    return {"job_id": job_id}
+
+
+@app.get("/jobs/{job_id}", tags=["Ingestion"])
+def get_job(job_id: str):
+    """Return the current state of a batch ingestion job."""
+    if job_id not in _JOBS:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return _JOBS[job_id]
 
 
 # ── Endpoints: retrieval ──────────────────────────────────────────────────────
