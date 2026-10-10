@@ -198,7 +198,7 @@ export function ProfileForm({ profile, initialRole }: { profile?: Profile | null
           )}
 
           <FormError message={state?.error} />
-          <Button type="submit" size="lg" disabled={pending} className="sticky bottom-24 lg:bottom-6">
+          <Button type="submit" size="lg" disabled={pending} className={cn("sticky", editing ? "bottom-24 lg:bottom-6" : "bottom-4")}>
             {pending ? "שומרים..." : editing ? "שמירת שינויים" : "יוצאים לדרך"}
           </Button>
         </>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CalendarPlus, PenSquare } from "lucide-react";
+import { DemoBar } from "@/components/demo-bar";
 import { BottomNav, SideNav } from "@/components/nav";
 import { Avatar, ButtonLink, Logo, RoleBadge } from "@/components/ui";
 import { countUnread, getViewer } from "@/lib/data";
@@ -67,11 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           )}
         </header>
 
-        {!isSupabaseConfigured && (
-          <div className="border-b border-spot/20 bg-spot/10 px-4 py-2 text-center text-xs text-spot">
-            מצב הדגמה — מוצגים נתונים לדוגמה. חברו את Supabase כדי להפעיל הרשמה, צ׳אט והצעות.
-          </div>
-        )}
+        {!isSupabaseConfigured && <DemoBar profile={profile} />}
 
         <main className="flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-10 lg:pb-12 lg:pt-8">{children}</main>
       </div>

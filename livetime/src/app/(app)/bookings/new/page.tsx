@@ -39,6 +39,7 @@ export default async function NewOfferPage({ searchParams }: PageProps<"/booking
         minDate={todayInIsrael()}
         capacity={venue.capacity}
         feeHint={feeHint}
+        defaultFee={artist.fee_min}
         viewerRole={me.role as "artist" | "venue"}
       />
     </div>

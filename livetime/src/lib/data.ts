@@ -1,7 +1,8 @@
 import "server-only";
 import { connection } from "next/server";
 import { cache } from "react";
-import { buildDemoEvents, buildDemoPosts, demoProfiles } from "./demo-data";
+import { cookies } from "next/headers";
+import { buildDemoConversations, buildDemoEvents, buildDemoOffers, buildDemoPosts, demoProfiles } from "./demo-data";
 import { isSupabaseConfigured } from "./supabase/env";
 import { createClient } from "./supabase/server";
 import type {
@@ -41,6 +42,8 @@ const demoEventsWithJoins = () =>
 // ─────────────────────────────────────────────────────────────
 // Viewer
 // ─────────────────────────────────────────────────────────────
+export const DEMO_COOKIE = "lt_demo_as";
+
 export interface Viewer {
   userId: string;
   email: string | null;
@@ -50,7 +53,12 @@ export interface Viewer {
 export const getViewer = cache(async (): Promise<Viewer | null> => {
   // Everything in LiveTime is per-request (session, "tonight", live-now badges).
   await connection();
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured) {
+    // Demo mode: "view as" a sample profile (set via /demo?as=<handle>).
+    const handle = (await cookies()).get(DEMO_COOKIE)?.value;
+    const profile = handle ? demoProfiles.find((p) => p.handle === handle) : undefined;
+    return profile ? { userId: "demo", email: null, profile } : null;
+  }
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const claims = data?.claims;
@@ -187,7 +195,7 @@ export async function listPosts(opts: { profileId?: string; profileIds?: string[
 // ─────────────────────────────────────────────────────────────
 export async function getMyReactions(targetIds: string[]): Promise<Set<string>> {
   const viewer = await getViewer();
-  if (!viewer?.profile || targetIds.length === 0) return new Set();
+  if (!viewer?.profile || targetIds.length === 0 || !isSupabaseConfigured) return new Set();
   const supabase = await createClient();
   const { data } = await supabase
     .from("reactions")
@@ -200,6 +208,7 @@ export async function getMyReactions(targetIds: string[]): Promise<Set<string>> 
 export async function getFollowingIds(): Promise<string[]> {
   const viewer = await getViewer();
   if (!viewer?.profile) return [];
+  if (!isSupabaseConfigured) return [];
   const supabase = await createClient();
   const { data } = await supabase.from("follows").select("following_id").eq("follower_id", viewer.profile.id);
   return (data ?? []).map((r: { following_id: string }) => r.following_id);
@@ -219,6 +228,23 @@ export async function listConversations(): Promise<ConversationPreview[]> {
   const viewer = await getViewer();
   if (!viewer?.profile) return [];
   const me = viewer.profile.id;
+  if (!isSupabaseConfigured) {
+    return buildDemoConversations()
+      .filter((c) => c.members.includes(me))
+      .map((c) => {
+        const last = c.messages[c.messages.length - 1] ?? null;
+        const otherId = c.members.find((m) => m !== me)!;
+        return {
+          id: c.id,
+          last_message_at: last?.created_at ?? new Date().toISOString(),
+          other: summary(demoProfiles.find((p) => p.id === otherId)!),
+          last_message: last,
+          // The newest incoming message counts as unread in the demo.
+          unread: Boolean(last && last.sender_id !== me && Date.now() - new Date(last.created_at).getTime() < 3 * 3600_000),
+        };
+      })
+      .sort((a, b) => b.last_message_at.localeCompare(a.last_message_at));
+  }
   const supabase = await createClient();
   const { data } = await supabase
     .from("conversations")
@@ -252,6 +278,18 @@ export async function listConversations(): Promise<ConversationPreview[]> {
 export async function getConversation(id: string) {
   const viewer = await getViewer();
   if (!viewer?.profile) return null;
+  if (!isSupabaseConfigured) {
+    const c = buildDemoConversations().find((x) => x.id === id && x.members.includes(viewer.profile!.id));
+    if (!c) return null;
+    const otherId = c.members.find((m) => m !== viewer.profile!.id)!;
+    return {
+      id,
+      me: viewer.profile,
+      other: summary(demoProfiles.find((p) => p.id === otherId)!),
+      messages: c.messages,
+      offers: buildDemoOffers().filter((o) => o.conversation_id === id),
+    };
+  }
   const supabase = await createClient();
   const [{ data: members }, { data: messages }, { data: offers }] = await Promise.all([
     supabase.from("conversation_members").select(`profile_id, profile:profiles(${SUMMARY})`).eq("conversation_id", id),
@@ -283,13 +321,17 @@ export async function countUnread(): Promise<number> {
 export async function listOffers(): Promise<Offer[]> {
   const viewer = await getViewer();
   if (!viewer?.profile) return [];
+  if (!isSupabaseConfigured) {
+    const me = viewer.profile.id;
+    return buildDemoOffers().filter((o) => o.venue_id === me || o.artist_id === me);
+  }
   const supabase = await createClient();
   const { data } = await supabase.from("offers").select(OFFER_SELECT).order("updated_at", { ascending: false }).limit(200);
   return (data ?? []) as Offer[];
 }
 
 export async function getOffer(id: string): Promise<Offer | null> {
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured) return buildDemoOffers().find((o) => o.id === id) ?? null;
   const supabase = await createClient();
   const { data } = await supabase.from("offers").select(OFFER_SELECT).eq("id", id).maybeSingle();
   return data as Offer | null;

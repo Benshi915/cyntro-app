@@ -5,6 +5,7 @@ import { SendHorizontal } from "lucide-react";
 import { markConversationRead, sendMessage } from "@/app/actions";
 import { OfferCard } from "@/components/offer-card";
 import { getBrowserClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Message, Offer, ProfileSummary } from "@/lib/types";
 import { cn, formatTime } from "@/lib/utils";
 
@@ -45,6 +46,7 @@ export function ChatThread({
 
   // Realtime: new messages in this conversation.
   useEffect(() => {
+    if (!isSupabaseConfigured) return; // demo mode: no realtime backend
     const supabase = getBrowserClient();
     const channel = supabase
       .channel(`conversation:${conversationId}`)
@@ -118,7 +120,7 @@ export function ChatThread({
                 )}
                 {isLatest && offer && (
                   <div className="mx-auto w-full max-w-md">
-                    <OfferCard offer={offer} meId={meId} />
+                    <OfferCard offer={offer} meId={meId} compact />
                   </div>
                 )}
               </div>

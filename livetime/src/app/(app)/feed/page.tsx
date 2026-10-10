@@ -41,7 +41,7 @@ export default async function FeedPage({ searchParams }: PageProps<"/feed">) {
     <div className="flex flex-col gap-10">
       <div>
         <h1 className="display text-6xl sm:text-7xl">
-          {me ? `היי ${me.display_name.split(" ")[0]},` : "מה מנגנים"}
+          {me ? `היי ${me.role === "fan" ? me.display_name.split(" ")[0] : me.display_name},` : "מה מנגנים"}
           <br />
           <span className="text-spot">{liveCount > 0 ? `${liveCount} הופעות עכשיו` : "הערב בעיר?"}</span>
         </h1>

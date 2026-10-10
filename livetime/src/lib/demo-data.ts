@@ -2,7 +2,7 @@
  * Sample network used in demo mode (no Supabase configured) and as the source for
  * supabase/seed.sql. All names are fictional.
  */
-import type { LiveEvent, Post, Profile } from "./types";
+import type { LiveEvent, Message, Offer, Post, Profile } from "./types";
 
 type Seed = Partial<Profile> & Pick<Profile, "id" | "role" | "handle" | "display_name">;
 
@@ -253,3 +253,112 @@ export function buildDemoPosts(): Post[] {
 }
 
 export const demoPostSeeds = postSeeds;
+
+// ─────────────────────────────────────────────────────────────
+// Signed-in demo: offers and chats around the sample network,
+// so the post-login screens can be explored without a database.
+// ─────────────────────────────────────────────────────────────
+const israelDate = (offsetDays: number) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date(Date.now() + offsetDays * 86400_000));
+const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+const sum = (handle: string) => {
+  const p = P(handle);
+  return { id: p.id, role: p.role, handle: p.handle, display_name: p.display_name, avatar_url: p.avatar_url, city: p.city, verified: p.verified, genres: p.genres };
+};
+
+export function buildDemoOffers(): Offer[] {
+  const base = { message: null, created_at: minutesAgo(600), updated_at: minutesAgo(30), set_length_min: 90, event_id: null };
+  const offer = (o: Partial<Offer> & Pick<Offer, "id" | "venue_id" | "artist_id" | "created_by" | "proposed_by" | "status" | "deal_type" | "conversation_id" | "event_date" | "start_time">): Offer => ({
+    ...base,
+    fee_amount: null,
+    ticket_price: null,
+    artist_share_pct: null,
+    bonus_threshold: null,
+    bonus_amount: null,
+    ...o,
+    venue: sum(demoProfiles.find((p) => p.id === o.venue_id)!.handle),
+    artist: sum(demoProfiles.find((p) => p.id === o.artist_id)!.handle),
+  });
+  const yermi = P("basement.yermi").id;
+  return [
+    // Artist pitched the venue; waiting for the venue.
+    offer({
+      id: "00000000-0000-4000-b000-000000000001", venue_id: yermi, artist_id: P("port.trio").id,
+      created_by: P("port.trio").id, proposed_by: P("port.trio").id, status: "pending",
+      deal_type: "ticket_split", ticket_price: 60, artist_share_pct: 70,
+      conversation_id: "00000000-0000-4000-c000-000000000001", event_date: israelDate(19), start_time: "21:00:00",
+      set_length_min: 120, message: "נשמח לחזור למרתף! שני סטים, ערב סטנדרטים וחומרים חדשים.", updated_at: minutesAgo(25),
+    }),
+    // Venue offered; waiting for the artist.
+    offer({
+      id: "00000000-0000-4000-b000-000000000002", venue_id: yermi, artist_id: P("bluebird.blues").id,
+      created_by: yermi, proposed_by: yermi, status: "pending",
+      deal_type: "versus", fee_amount: 1500, ticket_price: 60, artist_share_pct: 70,
+      conversation_id: "00000000-0000-4000-c000-000000000002", event_date: israelDate(24), start_time: "21:30:00",
+      message: "ערב בלוז בחמישי בסוף החודש? קהל של 80, הגברה ותופים במקום.", updated_at: minutesAgo(180),
+    }),
+    // Negotiated and closed.
+    offer({
+      id: "00000000-0000-4000-b000-000000000003", venue_id: yermi, artist_id: P("noa.band").id,
+      created_by: yermi, proposed_by: P("noa.band").id, status: "accepted",
+      deal_type: "fixed_fee", fee_amount: 3500, ticket_price: 70,
+      conversation_id: "00000000-0000-4000-c000-000000000003", event_date: israelDate(16), start_time: "22:00:00",
+      event_id: "00000000-0000-4000-9000-000000000011", message: "3,500 ואנחנו סוגרים 🙌", updated_at: minutesAgo(1440),
+    }),
+  ];
+}
+
+interface DemoConversation {
+  id: string;
+  members: [string, string];
+  messages: Message[];
+}
+
+export function buildDemoConversations(): DemoConversation[] {
+  const yermi = P("basement.yermi").id;
+  const msg = (conversation_id: string, n: number, sender: string, body: string | null, ago: number, offer?: { id: string; event: Message["offer_event"] }): Message => ({
+    id: `${conversation_id.slice(0, -4)}${String(n).padStart(4, "0")}`.replace("-c000-", "-d000-"),
+    conversation_id,
+    sender_id: sender,
+    body,
+    offer_id: offer?.id ?? null,
+    kind: offer ? "offer" : "text",
+    offer_event: offer?.event ?? null,
+    created_at: minutesAgo(ago),
+  });
+  const c1 = "00000000-0000-4000-c000-000000000001";
+  const c2 = "00000000-0000-4000-c000-000000000002";
+  const c3 = "00000000-0000-4000-c000-000000000003";
+  const c4 = "00000000-0000-4000-c000-000000000004";
+  const trio = P("port.trio").id, blue = P("bluebird.blues").id, noa = P("noa.band").id, dana = P("dana.live").id;
+  return [
+    {
+      id: c1, members: [yermi, trio],
+      messages: [
+        msg(c1, 1, trio, "היי ירמי, ראינו שפתחתם ערבים בסוף החודש 🎹", 95),
+        msg(c1, 2, yermi, "היי! כן, יש לנו חמישי פנוי. מה חשבתם?", 80),
+        msg(c1, 3, trio, "נשמח לחזור למרתף! שני סטים, ערב סטנדרטים וחומרים חדשים.", 25, { id: "00000000-0000-4000-b000-000000000001", event: "created" }),
+      ],
+    },
+    {
+      id: c2, members: [yermi, blue],
+      messages: [msg(c2, 1, yermi, "ערב בלוז בחמישי בסוף החודש? קהל של 80, הגברה ותופים במקום.", 180, { id: "00000000-0000-4000-b000-000000000002", event: "created" })],
+    },
+    {
+      id: c3, members: [yermi, noa],
+      messages: [
+        msg(c3, 1, yermi, "היינו שמחים לארח אתכם שוב! מה דעתכם על 3,000?", 2000, { id: "00000000-0000-4000-b000-000000000003", event: "created" }),
+        msg(c3, 2, noa, "3,500 ואנחנו סוגרים 🙌", 1700, { id: "00000000-0000-4000-b000-000000000003", event: "countered" }),
+        msg(c3, 3, yermi, null, 1440, { id: "00000000-0000-4000-b000-000000000003", event: "accepted" }),
+        msg(c3, 4, noa, "מעולה! נגיע ב־20:30 לסאונד צ׳ק.", 1430),
+      ],
+    },
+    {
+      id: c4, members: [yermi, dana],
+      messages: [
+        msg(c4, 1, dana, "היי, אפשר לשריין שולחן ל־4 להופעה של שלישיית הנמל?", 300),
+        msg(c4, 2, yermi, "בטח! שמרנו לך שולחן ליד הבמה 🎶", 290),
+      ],
+    },
+  ];
+}

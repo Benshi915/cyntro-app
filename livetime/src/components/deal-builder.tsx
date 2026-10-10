@@ -15,6 +15,8 @@ interface Props {
   capacity?: number | null;
   /** Artist's own fee range, as a hint for the venue. */
   feeHint?: string | null;
+  /** Starting amount for a new offer (the artist's minimum fee), so the projection opens with real numbers. */
+  defaultFee?: number | null;
   viewerRole: "artist" | "venue";
 }
 
@@ -24,11 +26,11 @@ const toNum = (v: string) => (v === "" ? null : Number(v));
  * The deal builder: choose a money model, fill in only what that model needs,
  * and watch a live projection of what each side walks away with.
  */
-export function DealBuilder({ mode, otherId, offer, minDate, capacity, feeHint, viewerRole }: Props) {
+export function DealBuilder({ mode, otherId, offer, minDate, capacity, feeHint, defaultFee, viewerRole }: Props) {
   const [state, action, pending] = useActionState<ActionState, FormData>(mode === "create" ? createOffer : counterOffer, undefined);
   const [dealType, setDealType] = useState<DealType>(offer?.deal_type ?? "fixed_fee");
-  const [fee, setFee] = useState(offer?.fee_amount?.toString() ?? "");
-  const [ticket, setTicket] = useState(offer?.ticket_price?.toString() ?? "");
+  const [fee, setFee] = useState((offer?.fee_amount ?? defaultFee)?.toString() ?? "");
+  const [ticket, setTicket] = useState(offer?.ticket_price?.toString() ?? (mode === "create" ? "50" : ""));
   const [share, setShare] = useState(offer?.artist_share_pct?.toString() ?? "70");
   const [bonusAt, setBonusAt] = useState(offer?.bonus_threshold?.toString() ?? "");
   const [bonus, setBonus] = useState(offer?.bonus_amount?.toString() ?? "");

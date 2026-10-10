@@ -4,14 +4,18 @@ import { redirect } from "next/navigation";
 import { ProfileForm } from "@/components/profile-form";
 import { Logo } from "@/components/ui";
 import { getViewer } from "@/lib/data";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Role } from "@/lib/types";
 
 export const metadata: Metadata = { title: "יצירת פרופיל" };
 
 export default async function OnboardingPage({ searchParams }: PageProps<"/onboarding">) {
   const viewer = await getViewer();
-  if (!viewer) redirect("/login?next=/onboarding");
-  if (viewer.profile) redirect("/feed");
+  // In demo mode the form is shown as-is so it can be previewed.
+  if (isSupabaseConfigured) {
+    if (!viewer) redirect("/login?next=/onboarding");
+    if (viewer.profile) redirect("/feed");
+  }
   const { role } = await searchParams;
   const initialRole = ["artist", "venue", "fan"].includes(role as string) ? (role as Role) : undefined;
 
