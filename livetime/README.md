@@ -39,7 +39,7 @@ npm run dev
 ## חיבור Supabase
 
 1. פותחים פרויקט חדש ב-Supabase.
-2. ב-**SQL Editor** מריצים את `supabase/migrations/0001_init.sql`. אחר כך, לנתוני דוגמה, מריצים את `supabase/seed.sql`.
+2. ב-**SQL Editor** מדביקים ומריצים את `supabase/setup.sql` (סכמה + נתוני דוגמה בקובץ אחד).
 3. ב-**Authentication → URL Configuration** מגדירים:
    - Site URL: כתובת האתר
    - Redirect URLs: `https://<הדומיין>/auth/callback`
